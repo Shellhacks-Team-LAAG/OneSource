@@ -1,0 +1,51 @@
+# --- Python / FastAPI ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+*.pyd
+*.db
+*.sqlite3
+*.pkl
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Local data dumps (don’t commit connector results!)
+data/
+*.json
+*.csv
+*.ndjson
+*.log
+
+# --- Node / React ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+build/
+dist/
+
+# --- Environment & secrets ---
+.env
+.env.local
+.env.*.local
+secrets.json
+config.json
+credentials.json
+token.json
+
+# --- System / IDE files ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Testing / scratch ---
+*.pytest_cache/
+.coverage
+*.tmp
