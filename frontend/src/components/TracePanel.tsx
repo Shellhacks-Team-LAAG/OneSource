@@ -1,102 +1,120 @@
+// src/components/TracePanel.tsx
 import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
 import { getTrace } from "../lib/api";
-import type { TraceResponse } from "../lib/api";
 
-export default function TracePanel({
-  traceId,
-  isOpen,
-  onClose,
-}: {
-  traceId: string | undefined;
-  isOpen: boolean;
-  onClose: () => void;
-}) {
-  const [trace, setTrace] = useState<TraceResponse | null>(null);
+type ProviderFlags = { timeout?: boolean; error?: string; rate_limited?: number };
+
+type Trace = {
+  trace_id: string;
+  query: string;
+  timings_ms: Record<string, number>;
+  provider_flags?: Record<string, ProviderFlags>;
+  candidates: Array<{ source: string; url: string; score: number; reasons: string[] }>;
+  chosen: { url: string; score: number; explanations: string[] };
+  policy: { redactions: string[]; conflict: boolean };
+};
+
+export default function TracePanel() {
+  const { id } = useParams<{ id: string }>();
+  const [data, setData] = useState<Trace | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !traceId) return;
-    (async () => {
-      setLoading(true);
+    async function load() {
+      if (!id) return;
       try {
-        const data = await getTrace(traceId);
-        setTrace(data);
-      } catch (err) {
-        console.error("Trace fetch failed:", err);
+        setErr(null);
+        setLoading(true);
+        const t = await getTrace<Trace>(id);
+        setData(t);
+      } catch (e: any) {
+        setErr(e.message || "Failed to load trace");
       } finally {
         setLoading(false);
       }
-    })();
-  }, [isOpen, traceId]);
+    }
+    load();
+  }, [id]);
 
-  if (!isOpen) return null;
+  if (loading && !data) return <div>Loading…</div>;
+  if (err) return <div style={{ color: "crimson" }}>{err}</div>;
+  if (!data) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-lg p-4 w-2/3 max-h-[80vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Trace Details</h2>
-          <button
-            className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
-            onClick={onClose}
-          >
-            Close
-          </button>
+    <div>
+      <h2>Trace</h2>
+      <div style={{ marginBottom: 8 }}>
+        Query: <strong>{data.query}</strong>
+      </div>
+
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontWeight: 600 }}>Timings (ms)</div>
+        <pre style={{ background: "#f7f7f7", padding: 8, borderRadius: 6 }}>
+{JSON.stringify(data.timings_ms, null, 2)}
+        </pre>
+      </div>
+
+      {data.provider_flags && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 600 }}>Provider flags</div>
+          <pre style={{ background: "#f7f7f7", padding: 8, borderRadius: 6 }}>
+{JSON.stringify(data.provider_flags, null, 2)}
+          </pre>
         </div>
+      )}
 
-        {loading && <p>Loading trace...</p>}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontWeight: 600 }}>Candidates</div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", borderBottom: "1px solid #eee" }}>Source</th>
+              <th style={{ textAlign: "left", borderBottom: "1px solid #eee" }}>URL</th>
+              <th style={{ textAlign: "left", borderBottom: "1px solid #eee" }}>Score</th>
+              <th style={{ textAlign: "left", borderBottom: "1px solid #eee" }}>Reasons</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.candidates.map((c, i) => (
+              <tr key={i}>
+                <td>{c.source}</td>
+                <td>
+                  <a href={c.url} target="_blank" rel="noreferrer">
+                    {c.url}
+                  </a>
+                </td>
+                <td>{c.score.toFixed(3)}</td>
+                <td>{c.reasons.join(", ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-        {!loading && trace && (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontWeight: 600 }}>Chosen</div>
+        <div>Score: {data.chosen.score.toFixed(3)}</div>
+        <div>Explanations: {data.chosen.explanations.join(", ")}</div>
+        {data.chosen.url && (
           <div>
-            <p className="mb-2 text-sm text-gray-600">
-              Query: {trace.query}
-            </p>
-            <p className="mb-4 text-sm text-gray-600">
-              Trace ID: {trace.trace_id}
-            </p>
-
-            <h3 className="font-semibold mb-2">Fusion Decision</h3>
-            <p className="mb-4">{trace.fusion.rationale}</p>
-
-            <h3 className="font-semibold mb-2">Candidates</h3>
-            <ul className="space-y-2">
-              {trace.candidates.map((c, idx) => (
-                <li
-                  key={idx}
-                  className="border p-2 rounded bg-gray-50 text-sm"
-                >
-                  <p>
-                    <strong>Source:</strong> {c.source}
-                  </p>
-                  <p>
-                    <strong>Snippet:</strong> {c.snippet}
-                  </p>
-                  <p>
-                    <strong>Score:</strong> {c.raw_score}
-                  </p>
-                  <p>
-                    <strong>Authority:</strong>{" "}
-                    {JSON.stringify(c.authority)}
-                  </p>
-                  <p>
-                    <strong>URL:</strong>{" "}
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-500 underline"
-                    >
-                      {c.url}
-                    </a>
-                  </p>
-                </li>
-              ))}
-            </ul>
+            URL:{" "}
+            <a href={data.chosen.url} target="_blank" rel="noreferrer">
+              {data.chosen.url}
+            </a>
           </div>
         )}
-
-        {!loading && !trace && <p>No trace data available.</p>}
       </div>
+
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontWeight: 600 }}>Policy</div>
+        <pre style={{ background: "#f7f7f7", padding: 8, borderRadius: 6 }}>
+{JSON.stringify(data.policy, null, 2)}
+        </pre>
+      </div>
+
+      <Link to="/">← Back to Ask</Link>
     </div>
   );
 }
