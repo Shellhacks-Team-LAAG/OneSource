@@ -1,22 +1,39 @@
 # app/services/crypto.py
+from __future__ import annotations
+
+import base64
 import os
-from cryptography.fernet import Fernet, InvalidToken
+from typing import List
+from cryptography.fernet import Fernet, MultiFernet
 
-_key = os.getenv("APP_ENCRYPTION_KEY")
-if not _key:
-    raise RuntimeError("APP_ENCRYPTION_KEY not set")
+_FERNET = None  # singleton
 
-fernet = Fernet(_key.encode() if not _key.startswith("gAAAA") else _key)  # tolerate string
+def _coerce_to_fernet_key(raw: str) -> bytes:
+    """Accepts either a urlsafe base64 Fernet key (44 chars) or a passphrase."""
+    raw = raw.strip()
+    if len(raw) == 44:
+        return raw.encode()
+    b = raw.encode("utf-8")
+    if len(b) < 32:
+        b = b.ljust(32, b"0")
+    elif len(b) > 32:
+        b = b[:32]
+    return base64.urlsafe_b64encode(b)
 
-def enc(plain: str | None) -> str | None:
-    if plain is None:
-        return None
-    return fernet.encrypt(plain.encode()).decode()
+def get_fernet():
+    """
+    Lazily construct a Fernet (or MultiFernet) from APP_ENCRYPTION_KEY.
+    Never read env at module import; only when this function is called.
+    """
+    global _FERNET
+    if _FERNET is not None:
+        return _FERNET
 
-def dec(token: str | None) -> str | None:
-    if token is None:
-        return None
-    try:
-        return fernet.decrypt(token.encode()).decode()
-    except InvalidToken:
-        return None
+    key_env = os.getenv("APP_ENCRYPTION_KEY")
+    if not key_env:
+        raise RuntimeError("APP_ENCRYPTION_KEY not set")
+
+    parts: List[str] = [p for p in key_env.split(",") if p.strip()]
+    fernets = [Fernet(_coerce_to_fernet_key(p)) for p in parts]
+    _FERNET = MultiFernet(fernets) if len(fernets) > 1 else fernets[0]
+    return _FERNET
